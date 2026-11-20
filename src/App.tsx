@@ -30,6 +30,8 @@ import {
 import { registerTokenContextMenu } from "./obr/contextMenu";
 import { useToastPopover } from "./obr/useToastPopover";
 import { useAutoLink } from "./obr/useAutoLink";
+import { useTrackBars } from "./obr/useTrackBars";
+import { clearTokenBars } from "./obr/trackBars";
 import { useDebouncedSheet } from "./obr/useDebouncedSheet";
 import { linkSheetToToken, unlinkToken } from "./obr/tokens";
 import { SheetEditor } from "./components/SheetEditor";
@@ -106,6 +108,13 @@ export function App() {
    * «Vincular token». The sheet itself stays in room metadata.
    */
   useAutoLink(ready, sceneReady, viewer, allSheets);
+
+  /*
+   * Draw each token's tracks above it. GM-only: the bars are scene items,
+   * so a single writer keeps clients from undoing each other's work, and
+   * what it draws is visible to everyone.
+   */
+  useTrackBars(ready, sceneReady, viewer, allSheets);
 
   // Built once: the slot ids must stay stable across renders, or React would
   // remount the inputs mid-edit.
@@ -239,6 +248,9 @@ export function App() {
     if (sheet.tokenId) {
       await unlinkToken(sheet.tokenId).catch(() => undefined);
       await removeTokenSheet(sheet.tokenId).catch(() => undefined);
+      // Drop the bars now rather than waiting for the next scene event,
+      // so the token does not keep a stale set for a moment.
+      await clearTokenBars(sheet.tokenId).catch(() => undefined);
     }
   };
 
