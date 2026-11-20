@@ -25,13 +25,22 @@ export interface TokenBar {
   color: string;
 }
 
+/** The badge outline a value is drawn in. */
+export type BadgeShape = "diamond" | "hexagon";
+
 export interface CornerValue {
   /** Stable per token, so a value can be matched across redraws. */
   key: string;
   corner: Corner;
   /** The number itself, with no maximum: the shape stays readable small. */
   text: string;
-  /** Fill of the badge behind the number. */
+  shape: BadgeShape;
+  /**
+   * The badge's outline colour.
+   *
+   * The badge itself is white with a dark number, so the outline is what
+   * tells one value from another at a glance.
+   */
   color: string;
   /** Spoken label, used for the item's name in the scene. */
   label: string;
@@ -42,13 +51,13 @@ export interface TokenDisplay {
   corners: CornerValue[];
 }
 
-/** Colours chosen to stay apart at token size, on dark maps or light. */
+/** Outline colours, kept apart at token size on dark maps and light. */
 const COLORS = {
   hp: "#c0392b",
-  stress: "#8e44ad",
-  hope: "#f1c40f",
-  armor: "#2980b9",
-  evasion: "#27ae60",
+  stress: "#e8c33a",
+  hope: "#8a8a93",
+  armor: "#8a8a93",
+  evasion: "#3aa655",
 } as const;
 
 function clamp(track: Track): { marked: number; max: number } {
@@ -73,6 +82,7 @@ export function tokenDisplay(sheet: Sheet): TokenDisplay {
     key: keyof typeof COLORS,
     label: string,
     corner: Corner,
+    shape: BadgeShape,
     track: Track,
   ) => {
     const { marked, max } = clamp(track);
@@ -81,6 +91,7 @@ export function tokenDisplay(sheet: Sheet): TokenDisplay {
       key,
       corner,
       text: String(marked),
+      shape,
       color: COLORS[key],
       label,
     });
@@ -89,15 +100,17 @@ export function tokenDisplay(sheet: Sheet): TokenDisplay {
   if (sheet.kind === "character") {
     const hp = clamp(sheet.hp);
 
-    addTrack("stress", "Estrés", "top-left", sheet.stress);
-    addTrack("hope", "Esperanza", "bottom-left", sheet.hope);
-    addTrack("armor", "Armadura", "top-right", sheet.armor);
+    // Diamonds on the left, hexagons on the right.
+    addTrack("hope", "Esperanza", "top-left", "diamond", sheet.hope);
+    addTrack("stress", "Estrés", "bottom-left", "diamond", sheet.stress);
+    addTrack("armor", "Armadura", "top-right", "hexagon", sheet.armor);
 
     // Evasion is a flat number rather than a track, so it is always shown.
     corners.push({
       key: "evasion",
       corner: "bottom-right",
       text: String(sheet.evasion),
+      shape: "hexagon",
       color: COLORS.evasion,
       label: "Evasión",
     });
@@ -117,7 +130,7 @@ export function tokenDisplay(sheet: Sheet): TokenDisplay {
 
   if (sheet.kind === "adversary") {
     const hp = clamp(sheet.hp);
-    addTrack("stress", "Estrés", "top-left", sheet.stress);
+    addTrack("stress", "Estrés", "bottom-left", "diamond", sheet.stress);
 
     return {
       bar:

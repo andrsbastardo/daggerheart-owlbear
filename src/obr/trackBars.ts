@@ -1,6 +1,6 @@
 import OBR, {
-  buildLabel,
   buildShape,
+  buildText,
   isImage,
   type BoundingBox,
   type Item,
@@ -10,6 +10,7 @@ import {
   isEmptyDisplay,
   tokenDisplay,
   type Corner,
+  type CornerValue,
   type TokenDisplay,
 } from "../domain/trackBars";
 import { EXTENSION_ID } from "./constants";
@@ -175,16 +176,19 @@ function buildDisplay(
 
     // The reading, centred on the bar.
     items.push(
-      buildLabel()
+      buildText()
         .plainText(display.bar.text)
-        .fontSize(height * 0.72)
+        .fontSize(height * 0.8)
         .fontWeight(700)
         .textAlign("CENTER")
         .textAlignVertical("MIDDLE")
         .fillColor("#ffffff")
-        .backgroundOpacity(0)
-        .padding(0)
-        .position({ x: box.center.x, y: y + height / 2 })
+        .strokeOpacity(0)
+        .strokeWidth(0)
+        .width(width)
+        .height(height)
+        // Text is positioned by its corner, so start at the bar's own.
+        .position({ x: left, y })
         .attachedTo(token.id)
         .layer("ATTACHMENT")
         .locked(true)
@@ -201,32 +205,86 @@ function buildDisplay(
   const size = dpi * BADGE_SIZE;
 
   for (const value of display.corners) {
-    const at = cornerCentre(value.corner, box, size);
-
-    items.push(
-      buildLabel()
-        .plainText(value.text)
-        .fontSize(size * 0.6)
-        .fontWeight(700)
-        .textAlign("CENTER")
-        .textAlignVertical("MIDDLE")
-        .fillColor("#ffffff")
-        .backgroundColor(value.color)
-        .backgroundOpacity(0.92)
-        .padding(size * 0.2)
-        .position(at)
-        .attachedTo(token.id)
-        .layer("ATTACHMENT")
-        .locked(true)
-        .disableHit(true)
-        .disableAttachmentBehavior(["SCALE", "ROTATION"])
-        .metadata(mark(value.key))
-        .name(`${value.label} ${value.text}`)
-        .build(),
-    );
+    items.push(...buildBadge(token.id, value, cornerCentre(value.corner, box, size), size, mark));
   }
 
   return items;
+}
+
+/**
+ * One corner value: a white badge with a coloured outline and a dark
+ * number on top.
+ *
+ * Two items rather than one, because a label cannot be a diamond or a
+ * hexagon. A diamond is a square turned 45 degrees; a hexagon is its own
+ * shape type. The number is drawn separately so it stays upright, since
+ * rotating the badge would rotate any text inside it.
+ */
+function buildBadge(
+  tokenId: string,
+  value: CornerValue,
+  centre: { x: number; y: number },
+  size: number,
+  mark: (key: string) => Record<string, unknown>,
+): Item[] {
+  const diamond = value.shape === "diamond";
+
+  /*
+   * A square turned 45 degrees sticks out further than its side length, so
+   * it is drawn smaller to match the hexagons optically.
+   */
+  const box = diamond ? size * 0.72 : size;
+
+  const attach = {
+    attachedTo: tokenId,
+    layer: "ATTACHMENT" as const,
+  };
+
+  const badge = buildShape()
+    .shapeType(diamond ? "RECTANGLE" : "HEXAGON")
+    .width(box)
+    .height(box)
+    // A shape is positioned by its corner, so pull back by half.
+    .position({ x: centre.x - box / 2, y: centre.y - box / 2 })
+    .rotation(diamond ? 45 : 0)
+    .fillColor("#f7f7f5")
+    .fillOpacity(1)
+    .strokeColor(value.color)
+    .strokeOpacity(1)
+    .strokeWidth(Math.max(2, size * 0.09))
+    .attachedTo(attach.attachedTo)
+    .layer(attach.layer)
+    .locked(true)
+    .disableHit(true)
+    .disableAttachmentBehavior(["SCALE", "ROTATION"])
+    .metadata(mark(`${value.key}-shape`))
+    .name(value.label)
+    .build();
+
+  const text = buildText()
+    .plainText(value.text)
+    .fontSize(size * 0.52)
+    .fontWeight(700)
+    .textAlign("CENTER")
+    .textAlignVertical("MIDDLE")
+    .fillColor("#15151a")
+    .strokeOpacity(0)
+    .strokeWidth(0)
+    .width(size * 1.4)
+    .height(size)
+    // Text is positioned by its corner too, and its box is wider than the
+    // badge so a two-digit number stays centred.
+    .position({ x: centre.x - size * 0.7, y: centre.y - size / 2 })
+    .attachedTo(attach.attachedTo)
+    .layer(attach.layer)
+    .locked(true)
+    .disableHit(true)
+    .disableAttachmentBehavior(["SCALE", "ROTATION"])
+    .metadata(mark(value.key))
+    .name(`${value.label} ${value.text}`)
+    .build();
+
+  return [badge, text];
 }
 
 /**

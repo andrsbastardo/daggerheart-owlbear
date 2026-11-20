@@ -17,8 +17,8 @@ test("a character shows HP on the bar and four values in the corners", () => {
 
   expect(display.bar?.text).toBe("0/6");
   expect(cornerKeys(createCharacter("Alice", "p1"))).toEqual([
-    "stress",
     "hope",
+    "stress",
     "armor",
     "evasion",
   ]);
@@ -106,11 +106,25 @@ test("evasion is always shown, being a flat number rather than a track", () => {
   expect(evasion?.text).toBe("12");
 });
 
-test("every value has its own colour, so none is mistaken for another", () => {
+test("the values that carry a colour are told apart by it", () => {
   const display = tokenDisplay(createCharacter("Alice", "p1"));
-  const colors = display.corners.map((corner) => corner.color);
+  const by = (key: string) =>
+    display.corners.find((corner) => corner.key === key);
 
-  expect(new Set(colors).size).toBe(colors.length);
+  // Stress and evasion are the two the table reads at a glance, so they
+  // are the ones with a colour. Hope and armor share a neutral outline and
+  // are told apart by their shape and corner instead.
+  expect(by("stress")?.color).not.toBe(by("evasion")?.color);
+  expect(by("hope")?.color).toBe(by("armor")?.color);
+});
+
+test("diamonds sit on the left, hexagons on the right", () => {
+  const display = tokenDisplay(createCharacter("Alice", "p1"));
+
+  for (const corner of display.corners) {
+    const onLeft = corner.corner.endsWith("-left");
+    expect(corner.shape).toBe(onLeft ? "diamond" : "hexagon");
+  }
 });
 
 // ---- Redraw suppression -------------------------------------------------
