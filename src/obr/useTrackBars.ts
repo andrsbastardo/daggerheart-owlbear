@@ -10,7 +10,7 @@ import {
 } from "../domain/trackBars";
 import { migrateSheet } from "../domain/migrate";
 import { getSheetIdFromItem } from "./tokens";
-import { syncTokenBars } from "./trackBars";
+import { clearAllBars, syncTokenBars } from "./trackBars";
 import { ITEM_SHEET_DATA_KEY } from "./constants";
 
 /**
@@ -109,7 +109,19 @@ export function useTrackBars(
 
     redraw.current = () => void pass();
 
-    void pass();
+    /*
+     * Wipe every marker before the first pass.
+     *
+     * `drawn` is our memory of what is on the map, and it starts empty on
+     * every load while the scene still holds whatever a previous session
+     * drew. Without this, markers from an older layout are never
+     * recognised as ours to replace and simply stay there. Clearing first
+     * makes the scene match our memory instead of assuming it already
+     * does.
+     */
+    void clearAllBars()
+      .catch(() => undefined)
+      .then(() => pass());
     const unsubscribe = OBR.scene.items.onChange(() => void pass());
 
     return () => {

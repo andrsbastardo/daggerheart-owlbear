@@ -2,7 +2,7 @@ import OBR, {
   buildLabel,
   buildShape,
   isImage,
-  type Image,
+  type BoundingBox,
   type Item,
 } from "@owlbear-rodeo/sdk";
 import type { Sheet } from "../domain/types";
@@ -62,38 +62,20 @@ async function ourItemsFor(tokenId: string): Promise<string[]> {
   return items.map((item) => item.id);
 }
 
-/**
- * Where a token's edges actually are.
+/*
+ * Token geometry comes from `OBR.scene.items.getItemBounds`, not from the
+ * image's own fields.
  *
- * An image's `position` is its anchor point, not its centre: `grid.offset`
- * says where that anchor sits inside the picture, in the image's own
- * pixels. Converting that to scene units needs both the scene's DPI and the
- * image's own, plus the item's scale. A fixed offset instead would put the
- * bar inside the art on any token that is not exactly one cell.
+ * An image's `position` is an anchor point whose place inside the picture
+ * is set by `grid.offset`, in the image's own pixels, and turning that into
+ * scene units means juggling two DPIs and the item's scale. Owlbear already
+ * knows where the token is on screen, so it is asked instead of guessed.
+ * Attached items take absolute scene coordinates, so these values are used
+ * as they come.
  */
-function tokenBounds(token: Image, dpi: number) {
-  const ratio = dpi / token.grid.dpi;
-  const width = token.image.width * ratio * token.scale.x;
-  const height = token.image.height * ratio * token.scale.y;
-
-  const left = token.position.x - token.grid.offset.x * ratio * token.scale.x;
-  const top = token.position.y - token.grid.offset.y * ratio * token.scale.y;
-
-  return {
-    left,
-    top,
-    right: left + width,
-    bottom: top + height,
-    width,
-    height,
-    centerX: left + width / 2,
-  };
-}
-
-type Bounds = ReturnType<typeof tokenBounds>;
 
 /** The centre point for a corner badge. */
-function cornerCentre(corner: Corner, box: Bounds, size: number) {
+function cornerCentre(corner: Corner, box: BoundingBox, size: number) {
   /*
    * Pulled inwards from the bounding box. Token art is usually a circle
    * inside a square image, so a badge flush with the corner would float
@@ -103,25 +85,25 @@ function cornerCentre(corner: Corner, box: Bounds, size: number) {
 
   const x =
     corner === "top-left" || corner === "bottom-left"
-      ? box.left + inset
-      : box.right - inset;
+      ? box.min.x + inset
+      : box.max.x - inset;
 
   // The bottom pair sits above the health bar rather than behind it.
   const y =
     corner === "top-left" || corner === "top-right"
-      ? box.top + inset
-      : box.bottom - inset - box.height * 0.1;
+      ? box.min.y + inset
+      : box.max.y - inset - box.height * 0.1;
 
   return { x, y };
 }
 
 /** Builds every item for one token. */
 function buildDisplay(
-  token: Image,
+  token: Item,
+  box: BoundingBox,
   display: TokenDisplay,
   dpi: number,
 ): Item[] {
-  const box = tokenBounds(token, dpi);
   const items: Item[] = [];
   const mark = (key: string) => ({
     [TRACK_BAR_KEY]: { tokenId: token.id, key },
@@ -132,8 +114,8 @@ function buildDisplay(
   if (display.bar) {
     const width = box.width * BAR_WIDTH;
     const height = dpi * BAR_HEIGHT;
-    const left = box.centerX - width / 2;
-    const y = box.bottom - height - box.height * BAR_OVERLAP;
+    const left = box.center.x - width / 2;
+    const y = box.max.y - height - box.height * BAR_OVERLAP;
 
     // The empty track behind.
     items.push(
@@ -202,7 +184,7 @@ function buildDisplay(
         .fillColor("#ffffff")
         .backgroundOpacity(0)
         .padding(0)
-        .position({ x: box.centerX, y: y + height / 2 })
+        .position({ x: box.center.x, y: y + height / 2 })
         .attachedTo(token.id)
         .layer("ATTACHMENT")
         .locked(true)
@@ -269,8 +251,17 @@ export async function syncTokenBars(
   if (ours.length > 0) await OBR.scene.items.deleteItems(ours);
   if (isEmptyDisplay(display)) return;
 
-  const dpi = await OBR.scene.grid.getDpi();
-  await OBR.scene.items.addItems(buildDisplay(token, display, dpi));
+  /*
+   * Measured after our own items are gone: the bounds of a group include
+   * its attachments, so leaving them in would grow the box on every pass
+   * and walk the markers off the token.
+   */
+  const [dpi, box] = await Promise.all([
+    OBR.scene.grid.getDpi(),
+    OBR.scene.items.getItemBounds([token.id]),
+  ]);
+
+  await OBR.scene.items.addItems(buildDisplay(token, box, display, dpi));
 }
 
 /** Removes everything we drew for a token, leaving other items alone. */
