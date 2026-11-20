@@ -36,6 +36,9 @@ export function useTrackBars(
   const busy = useRef(false);
   const again = useRef(false);
 
+  /** The running pass, so a sheet edit can trigger one. */
+  const redraw = useRef<() => void>(undefined);
+
   useEffect(() => {
     if (!ready || !sceneReady || viewer?.role !== "GM") return;
 
@@ -82,23 +85,46 @@ export function useTrackBars(
             if (!live.has(id)) drawn.current.delete(id);
           }
         } while (again.current);
-      } catch {
+      } catch (error) {
         /*
          * The scene can close mid-pass, and a token can vanish between the
          * read and the write. Bars are decoration: the next change redraws
          * them, and failing loudly would interrupt play for nothing.
+         *
+         * Logged rather than swallowed outright, because a bar that never
+         * appears is otherwise invisible to diagnose.
          */
+        console.warn("[Daggerheart] no se pudieron dibujar las barras", error);
       } finally {
         busy.current = false;
       }
     };
 
+    redraw.current = () => void pass();
+
     void pass();
     const unsubscribe = OBR.scene.items.onChange(() => void pass());
 
     return () => {
+      redraw.current = undefined;
       drawn.current.clear();
       unsubscribe();
     };
+    /*
+     * `sheets` is deliberately not a dependency: it is a new array on every
+     * render, so listing it would tear down and rebuild the subscription
+     * continuously, clearing `drawn` each time. The ref above carries the
+     * latest sheets in, and the effect below re-runs a pass when they
+     * change.
+     */
+  }, [ready, sceneReady, viewer?.role]);
+
+  /*
+   * Redraw when a sheet changes without the scene changing — editing HP in
+   * the panel moves no item, so no item event would arrive.
+   */
+  useEffect(() => {
+    if (!ready || !sceneReady || viewer?.role !== "GM") return;
+    redraw.current?.();
   }, [ready, sceneReady, viewer?.role, sheets]);
 }
