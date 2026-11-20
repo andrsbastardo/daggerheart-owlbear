@@ -53,8 +53,6 @@ const BAR_WIDTH = 1;
  */
 const BAR_GAP = 0.12;
 const BADGE_SIZE = 0.34;
-/** How far a badge sits outside the token's bounding box. */
-const BADGE_OUT = 0.1;
 
 function isOurItem(item: Item): boolean {
   return item.metadata[TRACK_BAR_KEY] !== undefined;
@@ -95,25 +93,27 @@ async function ourItemsFor(tokenId: string): Promise<string[]> {
 /**
  * The centre point for a corner badge.
  *
- * Badges straddle the token's edge rather than sitting inside it: over the
- * art they cover the picture and are hard to read against it, and the
- * reference layout has them on the rim. The offset is in grid cells, so a
- * large token does not push them far out into the map.
+ * Badges sit on the token's rim, not on the corners of its bounding box.
+ * Token art is almost always a circle inside a square image, so the box's
+ * corners are empty map: a badge placed there floats away from the token,
+ * which is exactly how it looked before this.
+ *
+ * So the position is taken around a circle inscribed in the box, at 45
+ * degrees to each corner, which puts each badge half on the artwork and
+ * half off it.
  */
-function cornerCentre(corner: Corner, box: BoundingBox, dpi: number) {
-  const out = dpi * BADGE_OUT;
+function cornerCentre(corner: Corner, box: BoundingBox) {
+  const radius = Math.min(box.width, box.height) / 2;
+  // sin(45°), so the badge lands on the diagonal of the rim.
+  const reach = radius * 0.7071;
 
-  const x =
-    corner === "top-left" || corner === "bottom-left"
-      ? box.min.x + out
-      : box.max.x - out;
+  const left = corner === "top-left" || corner === "bottom-left";
+  const top = corner === "top-left" || corner === "top-right";
 
-  const y =
-    corner === "top-left" || corner === "top-right"
-      ? box.min.y + out
-      : box.max.y - out;
-
-  return { x, y };
+  return {
+    x: box.center.x + (left ? -reach : reach),
+    y: box.center.y + (top ? -reach : reach),
+  };
 }
 
 /** Builds every item for one token. */
@@ -198,6 +198,7 @@ function buildDisplay(
     items.push(
       buildText()
         .plainText(display.bar.text)
+        .textType("PLAIN")
         .fontSize(height * 0.8)
         .fontWeight(700)
         .textAlign("CENTER")
@@ -229,7 +230,7 @@ function buildDisplay(
       ...buildBadge(
         token.id,
         value,
-        cornerCentre(value.corner, box, dpi),
+        cornerCentre(value.corner, box),
         size,
         mark,
       ),
@@ -291,6 +292,9 @@ function buildBadge(
 
   const text = buildText()
     .plainText(value.text)
+    // A text item defaults to RICH, and we only ever set the plain string:
+    // without this the badge draws empty.
+    .textType("PLAIN")
     .fontSize(size * 0.52)
     .fontWeight(700)
     .textAlign("CENTER")
