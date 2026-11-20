@@ -7,11 +7,8 @@ on:
 
 permissions:
   contents: read
-  # `pages: write` alone can deploy; turning Pages ON for the repository
-  # needs administration, which is what `enablement: true` below uses.
   pages: write
   id-token: write
-  administration: write
 
 concurrency:
   group: pages
@@ -35,11 +32,10 @@ jobs:
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
 
-      # `enablement` turns Pages on for the repository if it is not already,
-      # so a fresh repo deploys without a visit to Settings first.
+      # Pages must already be enabled for the repository, with its source
+      # set to GitHub Actions (Settings -> Pages). Enabling it from here
+      # needs a token with admin rights, which the default one is not.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
