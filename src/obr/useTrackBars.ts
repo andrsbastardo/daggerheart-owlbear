@@ -2,7 +2,12 @@ import { useEffect, useRef } from "react";
 import OBR, { isImage, type Item } from "@owlbear-rodeo/sdk";
 import type { Sheet } from "../domain/types";
 import type { Viewer } from "../domain/permissions";
-import { sameBars, trackBars, type TrackBar } from "../domain/trackBars";
+import {
+  sameDisplay,
+  tokenDisplay,
+  isEmptyDisplay,
+  type TokenDisplay,
+} from "../domain/trackBars";
 import { migrateSheet } from "../domain/migrate";
 import { getSheetIdFromItem } from "./tokens";
 import { syncTokenBars } from "./trackBars";
@@ -29,7 +34,7 @@ export function useTrackBars(
   sheetsRef.current = sheets;
 
   /** What we last drew per token, to avoid pointless rewrites. */
-  const drawn = useRef(new Map<string, TrackBar[]>());
+  const drawn = useRef(new Map<string, TokenDisplay>());
 
   // One pass at a time: our own writes come back as item changes, so a
   // re-entrant pass would fight the one still running.
@@ -70,14 +75,16 @@ export function useTrackBars(
 
           for (const token of tokens) {
             const sheet = sheetFor(token);
-            const wanted = sheet ? trackBars(sheet) : [];
-            const previous = drawn.current.get(token.id) ?? [];
+            const wanted: TokenDisplay = sheet
+              ? tokenDisplay(sheet)
+              : { corners: [] };
+            const previous = drawn.current.get(token.id) ?? { corners: [] };
 
-            if (sameBars(previous, wanted)) continue;
+            if (sameDisplay(previous, wanted)) continue;
 
             await syncTokenBars(token, sheet);
-            if (wanted.length > 0) drawn.current.set(token.id, wanted);
-            else drawn.current.delete(token.id);
+            if (isEmptyDisplay(wanted)) drawn.current.delete(token.id);
+            else drawn.current.set(token.id, wanted);
           }
 
           // Forget tokens that left, so the map does not grow all session.
