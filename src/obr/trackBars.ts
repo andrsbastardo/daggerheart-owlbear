@@ -32,12 +32,29 @@ import { EXTENSION_ID } from "./constants";
 /** Marks an item as ours, and says which token it belongs to. */
 const TRACK_BAR_KEY = `${EXTENSION_ID}/trackBar`;
 
-/** Geometry, as fractions of one grid cell or of the token. */
-const BAR_HEIGHT = 0.22;
-const BAR_WIDTH = 0.95;
-/** How far the bar rides up onto the token's lower edge. */
-const BAR_OVERLAP = 0.08;
-const BADGE_SIZE = 0.3;
+/*
+ * Geometry, in grid cells.
+ *
+ * Everything is sized against the scene's DPI — one grid square — and never
+ * against the token or the viewport. A marker is a readout, so it should
+ * stay the same size whether it labels a goblin or a dragon, and the map's
+ * own zoom already scales the whole scene with it.
+ *
+ * The one exception is the bar's width, which is capped to the token so a
+ * one-cell bar does not hang off a smaller miniature.
+ */
+const BAR_HEIGHT = 0.2;
+const BAR_WIDTH = 1;
+/**
+ * Gap below the token, in cells.
+ *
+ * Wide enough that the bottom pair of badges, which straddle the token's
+ * lower corners, clear the bar instead of touching it.
+ */
+const BAR_GAP = 0.12;
+const BADGE_SIZE = 0.34;
+/** How far a badge sits outside the token's bounding box. */
+const BADGE_OUT = 0.1;
 
 function isOurItem(item: Item): boolean {
   return item.metadata[TRACK_BAR_KEY] !== undefined;
@@ -75,25 +92,26 @@ async function ourItemsFor(tokenId: string): Promise<string[]> {
  * as they come.
  */
 
-/** The centre point for a corner badge. */
-function cornerCentre(corner: Corner, box: BoundingBox, size: number) {
-  /*
-   * Pulled inwards from the bounding box. Token art is usually a circle
-   * inside a square image, so a badge flush with the corner would float
-   * off the artwork entirely.
-   */
-  const inset = box.width * 0.12 + size / 2;
+/**
+ * The centre point for a corner badge.
+ *
+ * Badges straddle the token's edge rather than sitting inside it: over the
+ * art they cover the picture and are hard to read against it, and the
+ * reference layout has them on the rim. The offset is in grid cells, so a
+ * large token does not push them far out into the map.
+ */
+function cornerCentre(corner: Corner, box: BoundingBox, dpi: number) {
+  const out = dpi * BADGE_OUT;
 
   const x =
     corner === "top-left" || corner === "bottom-left"
-      ? box.min.x + inset
-      : box.max.x - inset;
+      ? box.min.x + out
+      : box.max.x - out;
 
-  // The bottom pair sits above the health bar rather than behind it.
   const y =
     corner === "top-left" || corner === "top-right"
-      ? box.min.y + inset
-      : box.max.y - inset - box.height * 0.1;
+      ? box.min.y + out
+      : box.max.y - out;
 
   return { x, y };
 }
@@ -113,10 +131,12 @@ function buildDisplay(
   // ---- The health bar, across the token's lower edge --------------------
 
   if (display.bar) {
-    const width = box.width * BAR_WIDTH;
+    // One cell wide, but never wider than the token it belongs to.
+    const width = Math.min(dpi * BAR_WIDTH, box.width);
     const height = dpi * BAR_HEIGHT;
     const left = box.center.x - width / 2;
-    const y = box.max.y - height - box.height * BAR_OVERLAP;
+    // Just below the token, clear of the art.
+    const y = box.max.y + dpi * BAR_GAP;
 
     // The empty track behind.
     items.push(
@@ -205,7 +225,15 @@ function buildDisplay(
   const size = dpi * BADGE_SIZE;
 
   for (const value of display.corners) {
-    items.push(...buildBadge(token.id, value, cornerCentre(value.corner, box, size), size, mark));
+    items.push(
+      ...buildBadge(
+        token.id,
+        value,
+        cornerCentre(value.corner, box, dpi),
+        size,
+        mark,
+      ),
+    );
   }
 
   return items;
