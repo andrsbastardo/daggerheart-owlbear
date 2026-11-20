@@ -1,0 +1,552 @@
+/* Owlbear Rodeo embeds extensions in an iframe over a dark UI. */
+:root {
+  --bg: #1e1e21;
+  --panel: #27272b;
+  --panel-2: #303036;
+  --border: #3d3d45;
+  --text: #ececf0;
+  --muted: #9b9ba6;
+  --accent: #c9a227;
+  --hope: #e8c547;
+  /* Deep red for the Fear pool's pips. */
+  --fear: #8b2f4a;
+  /* Purple for Fear as text — bright enough to read on the dark panel. */
+  --fear-text: #b98cf0;
+  --hp: #c0392b;
+  --stress: #7d5ba6;
+  --armor: #4a7fb5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.app { padding: 10px; }
+
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { font-size: 15px; }
+h2 { font-size: 13px; }
+h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+.row { display: flex; gap: 8px; align-items: center; }
+.row-wrap { flex-wrap: wrap; }
+.spread { justify-content: space-between; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.grow { flex: 1; min-width: 0; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.card + .card { margin-top: 8px; }
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 600; }
+button.danger:hover:not(:disabled) { border-color: var(--hp); color: #ff8b7d; }
+button.icon { padding: 3px 7px; line-height: 1; }
+
+input, select, textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+input:disabled, textarea:disabled, select:disabled { opacity: .6; }
+textarea { resize: vertical; min-height: 56px; }
+input[type="number"] { width: 100%; }
+
+label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+
+.field { min-width: 0; }
+.field-sm { max-width: 72px; }
+
+/* Pip tracks (HP, stress, hope, armor) */
+.track { display: flex; gap: 3px; flex-wrap: wrap; }
+.pip {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.pip:disabled { cursor: default; }
+.pip.on { border-color: transparent; }
+.track-hp .pip.on { background: var(--hp); }
+.track-stress .pip.on { background: var(--stress); }
+.track-hope .pip.on { background: var(--hope); }
+.track-armor .pip.on { background: var(--armor); }
+.track-fear .pip.on { background: var(--fear); border-color: #c05070; }
+
+.muted { color: var(--muted); }
+.small { font-size: 11px; }
+.empty { color: var(--muted); text-align: center; padding: 16px 8px; font-size: 12px; }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0; padding: 6px 10px; color: var(--muted);
+}
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.badge {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+}
+.badge.gm { color: var(--accent); border-color: var(--accent); }
+.badge.mine { color: var(--hope); border-color: var(--hope); }
+.badge.token { color: var(--armor); border-color: var(--armor); }
+
+.list-item {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+}
+.list-item:hover { border-color: var(--accent); }
+.list-item + .list-item { margin-top: 6px; }
+.list-item.readonly { cursor: default; }
+.list-item.readonly:hover { border-color: var(--border); }
+
+.grid-traits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+.notice {
+  background: #2b2518; border: 1px solid #6b5a22; color: #e8d9a0;
+  border-radius: 6px; padding: 8px; font-size: 11px;
+}
+
+/* --- Dice bar ---------------------------------------------------------- */
+
+/*
+ * Pinned to the bottom of the panel so the roll buttons stay reachable
+ * whatever is scrolled above them.
+ */
+.dice-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 10px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Keeps the last card clear of the fixed bar. */
+.app {
+  padding-bottom: 112px;
+}
+
+.dice-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.dice-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 2px;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.dice-button.duality {
+  border-color: var(--hope);
+}
+
+.dice-button .dice-label {
+  font-size: 10px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dice-button .dice-formula {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.dice-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.dice-edit-row .dice-error {
+  grid-column: 1 / -1;
+  color: #ff8b7d;
+}
+
+/* --- Roll results in the log ------------------------------------------- */
+
+.roll-dice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.die {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.die.hope { border-color: var(--hope); color: var(--hope); }
+.die.dropped { opacity: .45; text-decoration: line-through; }
+
+.roll-total {
+  font-size: 13px;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* A duality total takes the colour of whichever side won. */
+.roll-total.hope { color: var(--hope); }
+.roll-total.fear { color: var(--fear-text); }
+.roll-total.critical { color: #7fe0a0; }
+
+.roll-outcome {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Hope reads yellow, Fear purple — the two sides of the duality die. */
+.roll-outcome.hope {
+  background: #3a3218;
+  color: var(--hope);
+}
+
+.roll-outcome.fear {
+  background: #2a1b3d;
+  color: var(--fear-text);
+}
+
+.roll-outcome.critical {
+  background: #1f3a2a;
+  color: #7fe0a0;
+}
+
+/* The Fear die itself, so the pip and the verdict agree. */
+.die.fear {
+  border-color: var(--fear-text);
+  color: var(--fear-text);
+}
+
+/* --- Floating toasts --------------------------------------------------- */
+
+/*
+ * The toast popover is laid over the map, so its page must not paint a
+ * background of its own — only the cards themselves are visible.
+ */
+/*
+ * The toast page is laid over the map, so nothing in it may paint a
+ * background — html and body both, or the root element shows through as a
+ * dark rectangle. The class is set on <html> in toasts.html rather than
+ * matched with :has(), which depends on the content having rendered.
+ */
+.toast-page,
+.toast-page body,
+.toast-page #root {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+/*
+ * The frame is resized to this element's height, so it must wrap the card
+ * tightly: no fixed positioning, no viewport-height filler.
+ */
+.toast-stack {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+  background: transparent;
+  /* Clicks fall through any empty area to the map underneath. */
+  pointer-events: none;
+  /* Set from MAX_TOAST_HEIGHT so the two cannot drift apart. */
+  max-height: var(--max-toast-height, 220px);
+  overflow: hidden;
+}
+
+.toast {
+  pointer-events: auto;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(32, 32, 38, 0.94);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+  animation: toast-in 180ms ease-out;
+}
+
+.toast:hover { border-color: var(--muted); }
+
+.toast.hope { border-left-color: var(--hope); }
+.toast.fear { border-left-color: var(--fear-text); }
+.toast.critical { border-left-color: #7fe0a0; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.toast-head {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.toast-actor { font-size: 15px; }
+
+.toast-title {
+  font-size: 14px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-roll {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toast-dice { display: flex; gap: 4px; }
+
+/* Dice inside a toast are larger than the log's, to read from a distance. */
+.toast .die {
+  min-width: 28px;
+  height: 28px;
+  font-size: 14px;
+  border-radius: 5px;
+}
+
+/*
+ * The flat modifier, shown between the dice and the total.
+ *
+ * Deliberately not styled as a die: it was not rolled, and boxing it would
+ * read as a third d12 in a duality roll.
+ */
+.toast-modifier {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.toast-total {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.toast-total.hope { color: var(--hope); }
+.toast-total.fear { color: var(--fear-text); }
+.toast-total.critical { color: #7fe0a0; }
+
+.toast-outcome {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 5px;
+}
+
+.toast-outcome.hope { background: #3a3218; color: var(--hope); }
+.toast-outcome.fear { background: #2a1b3d; color: var(--fear-text); }
+.toast-outcome.critical { background: #1f3a2a; color: #7fe0a0; }
+
+/*
+ * Card text is clipped rather than allowed to grow: the full text is in the
+ * Registro tab, and an unbounded toast would cover the board.
+ *
+ * The limit derives from the frame's own cap minus the header and padding
+ * above it, so the text yields whatever space the viewport allows. The
+ * max-height is the guarantee; line-clamp only adds an ellipsis where it is
+ * supported, and cannot bound the height on its own.
+ */
+.toast-text {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  /* Frame cap, less the card's padding, border and header row. */
+  max-height: calc(var(--max-toast-height, 220px) - 50px);
+  overflow: hidden;
+  display: -webkit-box;
+  /* High enough that max-height is what actually limits the text, even on
+     a tall screen; this only places the ellipsis. */
+  -webkit-line-clamp: 12;
+  -webkit-box-orient: vertical;
+}
+
+/* --- Trait roll button ------------------------------------------------- */
+
+.trait-row {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+/*
+ * Let the field shrink so the die button always fits.
+ *
+ * A select has a wide intrinsic minimum width, so without this the weapon's
+ * trait row pushes its attack button out of the column.
+ */
+.trait-row input,
+.trait-row select {
+  min-width: 0;
+}
+
+/* Anchors the menu to the button. */
+.trait-roller {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+}
+
+/*
+ * The die button beside a field.
+ *
+ * `align-items: stretch` on the row already matches it to the input's
+ * height; a percentage height here would resolve against a height that is
+ * not yet settled and end up taller than the field.
+ */
+.trait-die {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 0 7px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/*
+ * The stance menu.
+ *
+ * Drops below the button. The traits card sits near the top of the sheet,
+ * so there is room underneath, and the panel scrolls if a trait is low
+ * enough that the menu would otherwise reach the dice bar.
+ */
+.trait-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  /* Wide enough for "Con desventaja" without wrapping, and no wider: the
+     traits grid is three narrow columns, so every extra pixel overhangs. */
+  min-width: 132px;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+}
+
+/* The component flips between these once it has measured itself. */
+.trait-menu.right { right: 0; }
+.trait-menu.left { left: 0; }
+
+.trait-menu-item {
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trait-menu-item:hover {
+  background: var(--bg);
+}
+
+/* Advantage and disadvantage carry the colours used elsewhere. */
+.trait-menu-item.advantage { color: var(--hope); }
+.trait-menu-item.disadvantage { color: var(--fear-text); }
+
+/*
+ * Category headings in the sheet list.
+ *
+ * A heading is a divider rather than a control: it reads as a label above
+ * its sheets, so it is quiet enough not to compete with the list items.
+ */
+.sheet-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheet-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 2px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* The leftovers pile is not a real category, so it is dimmer. */
+.sheet-group-head.ungrouped {
+  color: var(--muted);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
