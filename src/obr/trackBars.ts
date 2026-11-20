@@ -271,14 +271,25 @@ export async function clearTokenBars(tokenId: string): Promise<void> {
 }
 
 /**
- * Removes every marker in the scene, whatever token it belonged to.
+ * Removes markers whose token is no longer in the scene.
  *
- * For the case the drawing code cannot reach on its own: items left by a
- * token that was deleted while another client held the scene.
+ * Only the orphans: a marker belonging to a token that is still here may
+ * have been drawn moments ago by another client, and deleting it would
+ * start the two of them undoing each other's work on every pass.
  */
-export async function clearAllBars(): Promise<void> {
-  const items = await OBR.scene.items.getItems(isOurItem);
-  if (items.length > 0) {
-    await OBR.scene.items.deleteItems(items.map((item) => item.id));
+export async function clearOrphanBars(): Promise<void> {
+  const [markers, tokens] = await Promise.all([
+    OBR.scene.items.getItems(isOurItem),
+    OBR.scene.items.getItems(isImage),
+  ]);
+
+  const live = new Set(tokens.map((token) => token.id));
+  const orphans = markers.filter((item) => {
+    const mark = item.metadata[TRACK_BAR_KEY] as { tokenId?: unknown };
+    return typeof mark?.tokenId !== "string" || !live.has(mark.tokenId);
+  });
+
+  if (orphans.length > 0) {
+    await OBR.scene.items.deleteItems(orphans.map((item) => item.id));
   }
 }

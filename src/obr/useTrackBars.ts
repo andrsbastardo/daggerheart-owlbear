@@ -10,7 +10,8 @@ import {
 } from "../domain/trackBars";
 import { migrateSheet } from "../domain/migrate";
 import { getSheetIdFromItem } from "./tokens";
-import { clearAllBars, syncTokenBars } from "./trackBars";
+import { clearOrphanBars, syncTokenBars } from "./trackBars";
+import { shouldDraw } from "../domain/drawer";
 import { ITEM_SHEET_DATA_KEY } from "./constants";
 
 /**
@@ -44,6 +45,16 @@ export function useTrackBars(
   /** The running pass, so a sheet edit can trigger one. */
   const redraw = useRef<() => void>(undefined);
 
+  /**
+   * Whether this client is the one drawing.
+   *
+   * Markers are shared scene items, so two clients drawing them would each
+   * undo the other's work on every change and the display would flicker
+   * between their versions. Exactly one draws; see `drawer.ts` for how
+   * they agree on which without talking to each other.
+   */
+  const drawing = useRef(false);
+
   useEffect(() => {
     if (!ready || !sceneReady || viewer?.role !== "GM") return;
 
@@ -58,6 +69,7 @@ export function useTrackBars(
     };
 
     const pass = async () => {
+      if (!drawing.current) return;
       if (busy.current) {
         // Coalesce: run once more after the current pass rather than
         // queueing one per event.
@@ -110,23 +122,41 @@ export function useTrackBars(
     redraw.current = () => void pass();
 
     /*
-     * Wipe every marker before the first pass.
-     *
-     * `drawn` is our memory of what is on the map, and it starts empty on
-     * every load while the scene still holds whatever a previous session
-     * drew. Without this, markers from an older layout are never
-     * recognised as ours to replace and simply stay there. Clearing first
-     * makes the scene match our memory instead of assuming it already
-     * does.
+     * Work out whether we are the drawing client, and keep watching: when
+     * the chosen one disconnects, whoever is left picks up the job.
      */
-    void clearAllBars()
-      .catch(() => undefined)
-      .then(() => pass());
+    const elect = async () => {
+      const [connectionId, others] = await Promise.all([
+        OBR.player.getConnectionId(),
+        OBR.party.getPlayers(),
+      ]);
+
+      const was = drawing.current;
+      drawing.current = shouldDraw(connectionId, viewer.role, others);
+      if (was || !drawing.current) return;
+
+      /*
+       * Newly chosen. Drop markers whose token is gone — left by a session
+       * that ended before it could tidy up — then draw. Only the drawing
+       * client sweeps, so two of them cannot clear each other's work.
+       *
+       * Markers on a living token are left alone: the pass below replaces
+       * them anyway.
+       */
+      await clearOrphanBars().catch(() => undefined);
+      await pass();
+    };
+
+    void elect();
+    const unwatchParty = OBR.party.onChange(() => void elect());
+
     const unsubscribe = OBR.scene.items.onChange(() => void pass());
 
     return () => {
       redraw.current = undefined;
+      drawing.current = false;
       drawn.current.clear();
+      unwatchParty();
       unsubscribe();
     };
     /*
