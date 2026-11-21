@@ -137,6 +137,8 @@ function buildDisplay(
     const left = box.center.x - width / 2;
     // Just below the token, clear of the art.
     const y = box.max.y + dpi * BAR_GAP;
+    // A shape is placed by its centre; a text item by its top-left corner.
+    const midY = y + height / 2;
 
     // The empty track behind.
     items.push(
@@ -144,7 +146,7 @@ function buildDisplay(
         .shapeType("RECTANGLE")
         .width(width)
         .height(height)
-        .position({ x: left, y })
+        .position({ x: box.center.x, y: midY })
         .fillColor("#15151a")
         .fillOpacity(0.85)
         .strokeColor("#000000")
@@ -178,7 +180,15 @@ function buildDisplay(
           .shapeType("RECTANGLE")
           .width(Math.max(1, width * remaining))
           .height(height)
-          .position({ x: left, y })
+          /*
+           * The remaining part is anchored to the bar's left edge, so it
+           * shrinks rightwards as damage is marked rather than closing in
+           * from both sides.
+           */
+          .position({
+            x: left + (width * remaining) / 2,
+            y: midY,
+          })
           .fillColor(display.bar.color)
           .fillOpacity(0.95)
           .strokeOpacity(0)
@@ -273,8 +283,13 @@ function buildBadge(
     .shapeType(diamond ? "RECTANGLE" : "HEXAGON")
     .width(box)
     .height(box)
-    // A shape is positioned by its corner, so pull back by half.
-    .position({ x: centre.x - box / 2, y: centre.y - box / 2 })
+    /*
+     * A shape is positioned by its centre, unlike a text item, which goes
+     * by its top-left corner. Subtracting half the box here — as the text
+     * below rightly does — pushed every badge up and to the left of its
+     * own number.
+     */
+    .position(centre)
     .rotation(diamond ? 45 : 0)
     .fillColor("#f7f7f5")
     .fillOpacity(1)
