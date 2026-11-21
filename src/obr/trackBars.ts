@@ -46,12 +46,13 @@ const TRACK_BAR_KEY = `${EXTENSION_ID}/trackBar`;
 const BAR_HEIGHT = 0.2;
 const BAR_WIDTH = 1;
 /**
- * Gap below the token, in cells.
+ * How far the bar rides up onto the token's lower edge, in cells.
  *
- * Wide enough that the bottom pair of badges, which straddle the token's
- * lower corners, clear the bar instead of touching it.
+ * Overlapping the artwork rather than floating below it: the bar reads as
+ * part of the token that way, and the badges sit on the rim's diagonals,
+ * clear of its ends.
  */
-const BAR_GAP = 0.12;
+const BAR_OVERLAP = 0.02;
 const BADGE_SIZE = 0.34;
 
 function isOurItem(item: Item): boolean {
@@ -135,8 +136,8 @@ function buildDisplay(
     const width = Math.min(dpi * BAR_WIDTH, box.width);
     const height = dpi * BAR_HEIGHT;
     const left = box.center.x - width / 2;
-    // Just below the token, clear of the art.
-    const y = box.max.y + dpi * BAR_GAP;
+    // Riding onto the token's lower edge.
+    const y = box.max.y - height - dpi * BAR_OVERLAP;
     // A shape is placed by its centre; a text item by its top-left corner.
     const midY = y + height / 2;
 
@@ -284,12 +285,16 @@ function buildBadge(
     .width(box)
     .height(box)
     /*
-     * A shape is positioned by its centre, unlike a text item, which goes
-     * by its top-left corner. Subtracting half the box here — as the text
-     * below rightly does — pushed every badge up and to the left of its
-     * own number.
+     * An upright shape is placed by its centre, but a rotated one turns
+     * about its top-left corner, so the diamond has to be pulled back by
+     * half its box while the hexagon must not be. Getting this wrong is
+     * what left the diamonds sitting below their own numbers.
      */
-    .position(centre)
+    .position(
+      diamond
+        ? { x: centre.x - box / 2, y: centre.y - box / 2 }
+        : centre,
+    )
     .rotation(diamond ? 45 : 0)
     .fillColor("#f7f7f5")
     .fillOpacity(1)
